@@ -1,0 +1,73 @@
+# generic gfortran compiler options for linux
+#
+# NCDF_HOME   root directory containing lib and include subdirectories for netcdf4
+# HDF5_HOME   root directory containing lib and include subdirectories for HDF5
+# XIOS_HOME   root directory containing lib for XIOS
+# OASIS_HOME  root directory containing lib for OASIS
+#
+# NCDF_INC    netcdf4 include file
+# NCDF_LIB    netcdf4 library
+# XIOS_INC    xios include file    (taken into accound only if key_xios is activated)
+# XIOS_LIB    xios library         (taken into accound only if key_xios is activated)
+# OASIS_INC   oasis include file   (taken into accound only if key_oasis3 is activated)
+# OASIS_LIB   oasis library        (taken into accound only if key_oasis3 is activated)
+#
+# FC          Fortran compiler command
+# FCFLAGS     Fortran compiler flags
+# FFLAGS      Fortran 77 compiler flags
+# LD          linker
+# LDFLAGS     linker flags, e.g. -L<lib dir> if you have libraries
+# FPPFLAGS    pre-processing flags
+# AR          assembler
+# ARFLAGS     assembler flags
+# MK          make
+# USER_INC    complete list of include files
+# USER_LIB    complete list of libraries to pass to the linker
+# CC          C compiler used to compile conv for AGRIF
+# CFLAGS      compiler flags used with CC
+#
+# Note that:
+#  - unix variables "$..." are accpeted and will be evaluated before calling fcm.
+#  - fcm variables are starting with a % (and not a $)
+#
+# =======================================================================================
+# The following envirnment was used to compile NEMO with this arch file on a UKMO VDI:
+#
+# module purge
+# module load libraries/gcc/6.4.0
+# module load gcc/6.4.0
+# module load mpi/mpich/3.2.1/gnu/6.4.0
+# module load hdf5/1.8.20/gnu/6.4.0
+# module load netcdf/4.6.1/gnu/6.4.0
+# module load xios/r1063/gnu/6.4.0
+# module list
+# export xios_path=/project/ukmo/rhel7/fortran/opt/gfortran/packages/gnu/6.4.0/xios/r1063
+# =======================================================================================
+
+%NCDF_HOME           $NETCDF_DIR
+%HDF5_HOME           $HDF5_DIR
+%XIOS_HOME           $xios_path
+
+%NCDF_INC            -I%NCDF_HOME/include -I%HDF5_HOME/include
+%NCDF_LIB            -L%NCDF_HOME/lib -lnetcdff -lnetcdf
+%XIOS_INC            -I%XIOS_HOME/inc 
+%XIOS_LIB            -L%XIOS_HOME/lib -lxios -lstdc++ 
+
+%OASIS_INC           -I%OASIS_HOME/build/lib/mct -I%OASIS_HOME/build/lib/psmile.MPI1
+%OASIS_LIB           -L%OASIS_HOME/lib -lpsmile.MPI1 -lmct -lmpeu -lscrip
+
+%CPP	             cpp -Dkey_nosignedzero 
+%FC	                 mpif90 -c -cpp
+%FCFLAGS             -fdefault-real-8 -O3 -funroll-all-loops -fcray-pointer -ffree-line-length-none
+%FFLAGS              %FCFLAGS
+%LD                  mpif90
+%LDFLAGS             
+%FPPFLAGS            -P -traditional
+%AR                  ar
+%ARFLAGS             rs
+%MK                  make
+%USER_INC            %XIOS_INC %NCDF_INC
+%USER_LIB            %XIOS_LIB %NCDF_LIB
+
+%CC                  cc
+%CFLAGS              -O0

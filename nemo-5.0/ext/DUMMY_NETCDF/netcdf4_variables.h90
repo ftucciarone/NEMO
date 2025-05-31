@@ -1,0 +1,86 @@
+  function nf90_def_var_Scalar(ncid, name, xtype, varid)
+    integer, intent( in) :: ncid
+    character (len = *), intent( in) :: name
+    integer, intent(in) :: xtype
+    integer, intent(out) :: varid
+    integer :: nf90_def_var_Scalar
+     nf90_def_var_Scalar = 0
+  end function nf90_def_var_Scalar
+  function nf90_def_var_oneDim(ncid, name, xtype, dimids, varid, contiguous,        chunksizes, deflate_level, shuffle, fletcher32, endianness,        cache_size, cache_nelems, cache_preemption, quantize_mode, nsd, zstandard_level)
+    integer, intent( in) :: ncid
+    character (len = *), intent( in) :: name
+    integer, intent(in) :: xtype
+    integer, intent(in) :: dimids
+    integer, intent(out) :: varid
+    LOGICAL, optional, intent(in) :: contiguous
+    integer, optional, intent(in) :: chunksizes
+    integer, optional, intent(in) :: deflate_level
+    LOGICAL, optional, intent(in) :: shuffle, fletcher32
+    integer, optional, intent(in) :: endianness
+    integer, optional, intent(in) :: cache_size, cache_nelems, cache_preemption
+    integer, optional, intent(in) :: quantize_mode, nsd
+    integer, optional, intent(in) :: zstandard_level
+    integer :: nf90_def_var_oneDim
+#ifdef NF_HAS_QUANTIZE
+#else
+#endif
+     nf90_def_var_oneDim = 0
+  end function nf90_def_var_oneDim
+  function nf90_def_var_ManyDims(ncid, name, xtype, dimids, varid, contiguous,        chunksizes, deflate_level, shuffle, fletcher32, endianness, cache_size,        cache_nelems, cache_preemption, quantize_mode, nsd, zstandard_level)
+    integer, intent(in) :: ncid
+    character (len = *), intent(in) :: name
+    integer, intent( in) :: xtype
+    integer, dimension(:), intent(in) :: dimids
+    integer, intent(out) :: varid
+    LOGICAL, optional, intent(in) :: contiguous
+    integer, optional, dimension(:), intent(in) :: chunksizes
+    integer, optional, intent(in) :: deflate_level
+    LOGICAL, optional, intent(in) :: shuffle, fletcher32
+    integer, optional, intent(in) :: endianness
+    integer, optional, intent(in) :: cache_size, cache_nelems, cache_preemption
+    integer, optional, intent(in) :: quantize_mode, nsd
+    integer, optional, intent(in) :: zstandard_level
+    integer :: nf90_def_var_ManyDims
+#ifdef NF_HAS_QUANTIZE
+#else
+#endif
+     nf90_def_var_ManyDims = 0
+  end function nf90_def_var_ManyDims
+  function nf90_inq_varid(ncid, name, varid)
+    integer, intent(in) :: ncid
+    character (len = *), intent( in) :: name
+    integer, intent(out) :: varid
+    integer :: nf90_inq_varid
+     nf90_inq_varid = 0
+  end function nf90_inq_varid
+  function nf90_set_var_chunk_cache(ncid, varid, size, nelems, preemption)
+    integer, intent(in) :: ncid, varid, size, nelems, preemption
+    integer :: nf90_set_var_chunk_cache
+     nf90_set_var_chunk_cache = 0
+  end function nf90_set_var_chunk_cache
+  function nf90_inquire_variable(ncid, varid, name, xtype, ndims, dimids, nAtts,        contiguous, chunksizes, deflate_level, shuffle, fletcher32, endianness,        cache_size, cache_nelems, cache_preemption, quantize_mode, nsd, zstandard,        zstandard_level)
+    integer, intent(in) :: ncid, varid
+    character (len = *), optional, intent(out) :: name
+    integer, optional, intent(out) :: xtype, ndims 
+    integer, dimension(:), optional, intent(out) :: dimids
+    integer, optional, intent(out) :: nAtts
+    LOGICAL, optional, intent(out) :: contiguous
+    integer, optional, dimension(:), intent(out) :: chunksizes
+    integer, optional, intent(out) :: deflate_level
+    LOGICAL, optional, intent(out) :: shuffle, fletcher32
+    integer, optional, intent(out) :: endianness
+    integer, optional, intent(out) :: cache_size, cache_nelems, cache_preemption
+    integer, optional, intent(out) :: quantize_mode, nsd
+    integer, optional, intent(out) :: zstandard, zstandard_level
+    integer :: nf90_inquire_variable
+#ifdef NF_HAS_QUANTIZE       
+#else
+#endif
+     nf90_inquire_variable = 0
+  end function nf90_inquire_variable
+  function nf90_rename_var(ncid, varid, newname)
+    integer,             intent( in) :: ncid, varid
+    character (len = *), intent( in) :: newname
+    integer                          :: nf90_rename_var
+     nf90_rename_var = 0
+  end function nf90_rename_var

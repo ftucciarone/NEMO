@@ -1,0 +1,10 @@
+&nam_rebuild
+filebase='DATA/restart-31'
+ndomain=252
+ l_maskout=.true.
+ deflate_level=1
+ nc4_xchunk=200
+ nc4_ychunk=200
+ nc4_zchunk=1
+ nc4_tchunk=1
+/

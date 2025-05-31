@@ -1,0 +1,25 @@
+# HPC & configs lists to be tested with SETTE
+.parallel_HPC_CFG:
+  parallel:
+    matrix:
+      - HPC: [aa]
+        CONFIG: [ORCA2_ICE_PISCES,ORCA2_OFF_PISCES,AMM12,AGRIF_DEMO,WED025,GYRE_PISCES,GYRE_GO,ORCA2_SAS_ICE,ORCA2_ICE_OBS,C1D_PAPA]
+
+# HPC & testcases lists to be tested with SETTE
+.parallel_HPC_TST:
+  parallel:
+    matrix:
+      - HPC: [aa]
+        CONFIG: [SWG,ICE_AGRIF,OVERFLOW,LOCK_EXCHANGE,VORTEX,ISOMIP+,IWAVE]
+
+
+# variables declared hereafter will be avaible in all jobs
+# these 2 variables are needed for each HPC to be tested:
+# - SETTE_CFG: SETTE param.cfg file path
+# - SETTE_MOD: SETTE modules list -> not needed anymore with new ".env" files
+
+variables:
+  # METEO-FRANCE BELENOS (INTEL_2018+INTELMPI)
+  BL_SETTE_CFG: "/home/ext/mr/smer/samsong/SRC/NEMO/main/sette/param.ci"
+  # ECMWF AA
+  AA_SETTE_CFG: "/home/ar0s/SRC/NEMO/main/sette/param.ci"

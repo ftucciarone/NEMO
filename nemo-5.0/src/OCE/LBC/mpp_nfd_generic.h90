@@ -1,0 +1,329 @@
+
+   SUBROUTINE mpp_nfd_/**/PRECISION( ptab, cd_nat, psgn, kfillmode, pfillval, kfld, ldfull )
+      TYPE(PTR_4d_/**/PRECISION),  DIMENSION(:), INTENT(inout) ::   ptab        ! pointer of arrays on which apply the b.c.
+      CHARACTER(len=1), DIMENSION(kfld), INTENT(in   ) ::   cd_nat      ! nature of array grid-points
+      REAL(PRECISION),  DIMENSION(kfld), INTENT(in   ) ::   psgn        ! sign used across the north fold boundary
+      INTEGER                          , INTENT(in   ) ::   kfillmode   ! filling method for halo over land 
+      REAL(PRECISION)                  , INTENT(in   ) ::   pfillval    ! background value (used at closed boundaries)
+      INTEGER                          , INTENT(in   ) ::   kfld        ! number of pt3d arrays
+      LOGICAL                , OPTIONAL, INTENT(in   ) ::   ldfull      ! .true. if we also update the last line of the inner domain
+      !
+      LOGICAL  ::   llfull
+      INTEGER  ::   ji,  jj,  jk,  jl, jf, jr, jg, jn   ! dummy loop indices
+      INTEGER  ::   ierr, ibuffsize, impp, ipi0
+      INTEGER  ::   ii1, ii2, ij1, ij2, ij3, iig, inei
+      INTEGER  ::   i0max, ilntot, iisht, ijsht, ihsz
+      INTEGER  ::   iproc, ijnr, ipjtot, iF_TU, i012
+      INTEGER,         DIMENSION(kfld)               ::   ipi, ipj, ipj1, ipj2, ipk, ipl   ! dimension of the input array
+      INTEGER,         DIMENSION(kfld)               ::   ihls                             ! halo size
+      INTEGER,         DIMENSION(:)    , ALLOCATABLE ::   ireq_s, ireq_r   ! for mpi_isend when avoiding mpi_allgather
+      INTEGER,         DIMENSION(:)    , ALLOCATABLE ::   ipjfld ! number of sent lines for each field
+      REAL(PRECISION)                                ::   zhuge, zztmp
+      REAL(PRECISION), DIMENSION(:,:)  , ALLOCATABLE ::   zbufs  ! buffer, receive and work arrays
+      REAL(PRECISION), DIMENSION(:,:,:), ALLOCATABLE ::   zbufr  ! buffer, receive and work arrays
+      REAL(PRECISION), DIMENSION(:,:)  , ALLOCATABLE ::   znorthloc
+      REAL(PRECISION), DIMENSION(:,:,:), ALLOCATABLE ::   znorthall
+      TYPE(PTR_4D_/**/PRECISION), DIMENSION(1) ::   ztabglo        ! array or pointer of arrays on which apply the b.c.
+      !!----------------------------------------------------------------------
+      !
+      zhuge = HUGE(0._/**/PRECISION)   ! avoid to call the huge function inside do loops
+      !
+      DO jf = 1, kfld
+         ipi(jf) = SIZE(ptab(jf)%pt4d,1)
+         ipj(jf) = SIZE(ptab(jf)%pt4d,2)
+         ipk(jf) = SIZE(ptab(jf)%pt4d,3)
+         ipl(jf) = SIZE(ptab(jf)%pt4d,4)
+         ihls(jf) = ( ipi(jf) - Ni_0 ) / 2
+      END DO
+      !
+      IF( ln_nnogather ) THEN      !==  no allgather exchanges  ==!
+
+         !   ---   define number of exchanged lines   ---
+         !
+         ! In theory we should exchange only nn_hls lines.
+         !
+         ! However, some other points are duplicated in the north pole folding:
+         !  - c_NFtype='T', grid=T : half of the last line (jpiglo/2+2:jpiglo-nn_hls)
+         !  - c_NFtype='T', grid=U : half of the last line (jpiglo/2+1:jpiglo-nn_hls)
+         !  - c_NFtype='T', grid=V : all the last line nn_hls+1 and (nn_hls+2:jpiglo-nn_hls)
+         !  - c_NFtype='T', grid=F : all the last line (nn_hls+1:jpiglo-nn_hls)
+         !  - c_NFtype='F', grid=U : no points are duplicated
+         !  - c_NFtype='F', grid=V : half of the last line (jpiglo/2+1:jpiglo-nn_hls)
+         !  - c_NFtype='F', grid=F : half of the last line (jpiglo/2+1:jpiglo-nn_hls-1)
+         ! The order of the calculations may differ for these duplicated points (as, for example jj+1 becomes jj-1)
+         ! This explain why these duplicated points may have different values even if they are at the exact same location.
+         ! In consequence, we may want to force the folding on these points by setting l_full_nf_update = .TRUE.
+         ! This is slightly slower but necessary to avoid different values on identical grid points!!
+         !
+         llfull = .FALSE.
+         IF ( PRESENT(ldfull) )   llfull = ldfull
+         ! also force during the first step to make sure all the init are ok
+         llfull = llfull .OR. ncom_stp <= nit000
+         
+         ALLOCATE(ipjfld(kfld))                 ! how many lines do we send for each field?
+         IF( llfull ) THEN
+            DO jf = 1, kfld                     ! Loop over the number of arrays to be processed
+               ipjfld(jf) = ihls(jf) + COUNT( (/ c_NFtype == 'T'  .OR. cd_nat(jf) == 'V' .OR. cd_nat(jf) == 'F' /) )
+            END DO
+         ELSE
+            ipjfld(:) = ihls(:)
+         ENDIF
+         !
+         i0max = MAXVAL( nfni_0, mask = nfproc /= -1 )        ! largest value of Ni_0 among processors (we are not sending halos)
+         ilntot = SUM( ipjfld(:) * ipk(:) * ipl(:) )
+         ALLOCATE( zbufs(i0max,ilntot), ireq_s(nfd_nbnei) )   ! store all the data to be sent in a buffer array
+         ibuffsize = i0max * ilntot                           ! must be the same for all processors -> use i0max
+         !
+         ! fill the send buffer with all the lines
+         ij1 = 0
+         DO jf = 1, kfld
+            !
+            i012 = COUNT( (/ c_NFtype == 'T' /) ) + COUNT( (/ cd_nat(jf) == 'V' .OR. cd_nat(jf) == 'F' /) )   ! 0, 1 OR 2
+            ijsht = ipj(jf) - 2*ihls(jf) - i012         ! j-position of the sent lines (from bottom of sent lines)
+            !
+            DO jl = 1, ipl(jf)   ;   DO jk = 1, ipk(jf)
+               DO jj = 1, ipjfld(jf)
+                  ij1 = ij1 + 1
+                  ij2 = jj + ijsht
+                  DO ji = 1, Ni_0          ! use only inner domain
+                     ii2 = ji + ihls(jf)
+                     zbufs(ji,ij1) = ptab(jf)%pt4d(ii2,ij2,jk,jl)
+                  END DO
+                  DO ji = Ni_0+1, i0max    ! avoid sending uninitialized values and make sure we don't use it
+                     zbufs(ji,ij1) = zhuge
+                  END DO
+               END DO
+            END DO   ;   END DO
+         END DO   ! jf
+         !
+         ! send the same buffer data to all neighbourgs as soon as possible
+         DO jn = 1, nfd_nbnei
+            iproc = nfd_rknei(jn)
+            IF( iproc /= narea-1 .AND. iproc /= -1 ) THEN   ! it is neither me nor a land-only neighbourg
+#if ! defined key_mpi_off
+               CALL MPI_Isend( zbufs, ibuffsize, MPI_TYPE, iproc, 5, mpi_comm_oce, ireq_s(jn), ierr )
+#endif
+            ELSE
+               ireq_s(jn) = MPI_REQUEST_NULL   ! must be defined for mpi_waitall
+            ENDIF
+         END DO
+         !
+         ALLOCATE( zbufr(i0max,ilntot,nfd_nbnei), ireq_r(nfd_nbnei) ) 
+         !
+         DO jn = 1, nfd_nbnei                  ! 1st loop: first get data which does not need any communication
+            !                                  !           -> this gives more time to receive the communications
+            iproc = nfd_rknei(jn)
+            !
+            IF(           iproc == -1 ) THEN   ! No neighbour (land-only neighbourg that was suppressed)
+               !
+               ireq_r(jn) = MPI_REQUEST_NULL                ! no message to be received, must be defined for mpi_waitall
+               SELECT CASE ( kfillmode )
+               CASE ( jpfillnothing )                       ! no filling 
+               CASE ( jpfillcopy    )                       ! filling with my inner domain values
+                  !                                            ! trick: we use only the 1st value, see init_nfdcom
+                  zbufr(1,:,jn) = zbufs(1,:)                   ! chose to take the 1st inner domain point
+               CASE ( jpfillcst     )                       ! filling with constant value
+                  zbufr(1,:,jn) = pfillval                     ! trick: we use only the 1st value, see init_nfdcom
+               END SELECT
+               !
+            ELSE IF( iproc == narea-1 ) THEN   ! I get data from myself!
+               !
+               ireq_r(jn) = MPI_REQUEST_NULL                ! no message to be received, must be defined for mpi_waitall
+               zbufr(:,:,jn) = zbufs(:,:)                      ! we can directly do: received buffer = sent buffer!
+               !
+            ENDIF
+            !
+         END DO   ! nfd_nbnei
+         !
+         DO jn = 1, nfd_nbnei                  ! 2nd loop: now get data from a neighbour trough communication
+            !
+            iproc = nfd_rknei(jn)
+            IF( iproc /= narea-1 .AND. iproc /= -1 ) THEN   ! it is neither me nor a land-only neighbourg
+#if ! defined key_mpi_off
+               CALL MPI_Irecv( zbufr(:,:,jn), ibuffsize, MPI_TYPE, iproc, 5, mpi_comm_oce, ireq_r(jn), ierr )
+#endif
+            ENDIF
+         END DO   ! nfd_nbnei
+         !
+#if ! defined key_mpi_off
+         CALL mpi_waitall(nfd_nbnei, ireq_r, MPI_STATUSES_IGNORE, ierr)   ! wait for all Irecv
+#endif
+         !
+         ! Apply the North pole folding
+         !
+         ij2 = 0
+         DO jf = 1, kfld
+            !
+            SELECT CASE ( cd_nat(jf) )     ! which grid number?
+            CASE ('T','W')   ;   iig = 1   ! T-, W-point
+            CASE ('U')       ;   iig = 2   ! U-point
+            CASE ('V')       ;   iig = 3   ! V-point
+            CASE ('F')       ;   iig = 4   ! F-point
+            END SELECT
+            !
+            ihsz = ihls(jf)   ! shorter name
+            iisht = nn_hls - ihsz
+            !
+            DO jl = 1, ipl(jf)   ;   DO jk = 1, ipk(jf)
+               !
+               DO jj = 1,ihsz                        ! NP folding for the last ihls(jf) lines of this field
+                  ij1 = ipj(jf) - jj + 1             ! j-index in the receiving array (from the top -> reverse order for jj)
+                  ij2 = ij2 + 1
+                  ij3 = ihsz+1  - jj + 1
+                  DO ji = 1, ipi(jf)
+                     ii1 = ji + iisht
+                     inei = nfd_rksnd(ii1,ij3,iig)       ! neigbhour-index in the buffer
+                     IF( nfd_rknei(inei) == -1 .AND. kfillmode == jpfillnothing )   CYCLE   ! no neighbourg and do nothing to fill
+                     ii2 = nfd_jisnd(ii1,ij3,iig)        ! i-index in the buffer, starts at 1 in the inner domain
+                     ptab(jf)%pt4d(ji,ij1,jk,jl) = psgn(jf) * zbufr(ii2,ij2,inei)
+                  END DO
+               END DO
+               DO jj = ihsz+1, ipjfld(jf)            ! NP folding for line ipj-ihsz that can be partially modified
+                  ij1 = ipj(jf) - jj + 1             ! j-index in the receiving array (from the top -> reverse order for jj)
+                  ij2 = ij2 + 1
+                  ij3 = 1
+                  DO ji = 1, ipi(jf)
+                     ii1 = ji + iisht
+                     IF( lnfd_same(ii1,iig) )   CYCLE    ! do nothing if should not be modified
+                     inei = nfd_rksnd(ii1,ij3,iig)       ! neigbhour-index in the buffer
+                     IF( nfd_rknei(inei) == -1 .AND. kfillmode == jpfillnothing )   CYCLE   ! no neighbourg and do nothing to fill
+                     ii2 = nfd_jisnd(ii1,ij3,iig)        ! i-index in the buffer, starts at 1 in the inner domain
+                     ptab(jf)%pt4d(ji,ij1,jk,jl) = psgn(jf) * zbufr(ii2,ij2,inei)
+                  END DO
+               END DO
+               !               
+            END DO   ;   END DO   ! jk   ;   jl
+            !               
+         END DO   ! jf
+         !
+         DEALLOCATE( zbufr, ireq_r, ipjfld )
+         !
+         CALL mpi_waitall(nfd_nbnei, ireq_s, MPI_STATUSES_IGNORE, ierr)   ! wait for all Isend
+         !
+         DEALLOCATE( zbufs, ireq_s )
+         !
+      ELSE                             !==  allgather exchanges  ==!
+         !
+         DO jf = 1, kfld
+            ! how many lines do we send for each field?
+            ipj1(jf) =     ihls(jf) + COUNT( (/ c_NFtype == 'T'  .OR. cd_nat(jf) == 'V' .OR. cd_nat(jf) == 'F' /) )
+            ! how many lines do we need for each field?
+            ipj2(jf) = 2 * ihls(jf) + COUNT( (/ c_NFtype == 'T' /) ) + COUNT( (/ cd_nat(jf) == 'V' .OR. cd_nat(jf) == 'F' /) )
+         END DO
+         !
+         i0max = MAXVAL( nfni_0, mask = nfproc /= -1 )           ! largest value of Ni_0 among processors (we are not sending halos)
+         ibuffsize = i0max * SUM( ipj1(:) * ipk(:) * ipl(:) )    ! use i0max because each proc must have the same buffer size
+         ALLOCATE( znorthloc(i0max, ibuffsize/i0max), znorthall(i0max, ibuffsize/i0max, ndim_rank_north) )
+         !
+         ij1 = 0                                                 ! initalize line index
+         DO jf = 1, kfld   ;   DO jl = 1, ipl(jf)   ;   DO jk = 1, ipk(jf)
+            DO jj = 1, ipj1(jf)                                  ! put in znorthloc ipj1(jf) j-lines of ptab
+               ij2 = ipj(jf) - ipj2(jf) + jj                     ! the first ipj1 lines of the last ipj2 lines
+               ij1 = ij1 + 1
+               DO ji = 1, Ni_0
+                  ii2 = ihls(jf) + ji                            ! copy only the inner domain
+                  znorthloc(ji,ij1) = ptab(jf)%pt4d(ii2,ij2,jk,jl)
+               END DO
+               DO ji = Ni_0+1, i0max                             ! avoid to send uninitialized values
+                  znorthloc(ji,ij1) = zhuge                      ! and make sure we don't use it
+               END DO
+            END DO
+         END DO   ;   END DO   ;   END DO
+         !
+         ! start waiting time measurement
+#if ! defined key_mpi_off
+         ! fill znorthall with the znorthloc of each northern process
+         CALL MPI_ALLGATHER( znorthloc, ibuffsize, MPI_TYPE, znorthall, ibuffsize, MPI_TYPE, ncomm_north, ierr )
+#endif
+         DEALLOCATE( znorthloc )                                 ! no more need of znorthloc
+         !
+         DO jf = 1, kfld
+            !
+            ihsz = ihls(jf)   ! shorter name
+            iisht = nn_hls - ihsz
+            ALLOCATE( ztabglo(1)%pt4d(Ni0glo+2*ihsz,ipj2(jf),ipk(jf),ipl(jf)) )
+            !
+            iF_TU = COUNT( (/ c_NFtype == 'F' .AND. ( cd_nat(jf) == 'U' .OR. cd_nat(jf) == 'T' ) /) )   ! F-folding and T or U grid
+            IF( iF_TU == 0 )   ztabglo(1)%pt4d(:,ipj2(jf)-ihsz,:,:) = zhuge   ! flag off the line that is not fully modified
+            !
+            ! need to fill only the first ipj1(j) lines of ztabglo as lbc_nfd don't use the last ihsz lines
+            ijnr = 0
+            DO jr = 1, jpni                                      ! recover the global north array using each northern process
+               iproc = nfproc(jr)                                ! process number
+               impp  = nfimpp(jr) + ihsz   ! ( = +nn_hls-iisht)  ! inner domain position (without halos) of subdomain iproc 
+               ipi0  = nfni_0(jr)                                ! Ni_0 but for subdomain iproc
+               !
+               IF( iproc == -1 ) THEN                  ! No neighbour (land proc that was suppressed)
+                  !
+                  SELECT CASE ( kfillmode )
+                  CASE ( jpfillnothing )               ! no filling
+                     CALL ctl_stop( 'STOP', 'mpp_nfd_generic : cannot use jpfillnothing with ln_nnogather = F')
+                  CASE ( jpfillcopy    )               ! filling with inner domain values
+                     DO jl = 1, ipl(jf)   ;   DO jk = 1, ipk(jf)
+                        DO jj = 1, ipj1(jf)
+                           ij2 = ipj(jf) - ipj2(jf) + jj     ! the first ipj1(jf) lines of the last ipj2(jf) lines
+                           DO ji = 1, ipi0
+                              ii1 = impp + ji - 1            ! inner iproc-subdomain in the global domain with ihsz halos
+                              ztabglo(1)%pt4d(ii1,jj,jk,jl) = ptab(jf)%pt4d(ihsz+1,ij2,jk,jl) ! take the 1st inner domain point
+                           END DO
+                        END DO
+                     END DO   ;   END DO
+                  CASE ( jpfillcst     )               ! filling with constant value
+                     DO jl = 1, ipl(jf)   ;   DO jk = 1, ipk(jf)
+                        DO jj = 1, ipj1(jf)
+                           DO ji = 1, ipi0
+                              ii1 = impp + ji - 1            ! inner iproc-subdomain in the global domain with ihsz halos
+                              ztabglo(1)%pt4d(ii1,jj,jk,jl) = pfillval
+                           END DO
+                        END DO
+                     END DO   ;   END DO
+                  END SELECT
+                  !
+               ELSE                                    ! use neighbour values
+                  ijnr = ijnr + 1
+                  ij1 = SUM( ipj1(1:jf-1) * ipk(1:jf-1) * ipl(1:jf-1) )   ! reset line offset, return 0 if jf = 1
+                  DO jl = 1, ipl(jf)   ;   DO jk = 1, ipk(jf)
+                     DO jj = 1, ipj1(jf)
+                        ij1 = ij1 + 1
+                        DO ji = 1, ipi0
+                           ii1 = impp + ji - 1               ! inner iproc-subdomain in the global domain with ihsz halos
+                           ztabglo(1)%pt4d(ii1,jj,jk,jl) = znorthall(ji, ij1, ijnr)
+                        END DO
+                     END DO
+                  END DO   ;   END DO
+               ENDIF
+               !
+            END DO   ! jpni
+            !
+            CALL lbc_nfd( ztabglo, cd_nat(jf:jf), psgn(jf:jf), 1 )   ! North fold boundary condition
+            !
+            DO jl = 1, ipl(jf)   ;   DO jk = 1, ipk(jf)               ! Scatter back to ARRAY_IN
+               DO jj = 0, ihsz-1
+                  ij1 = ipj( jf) - jj   ! last ihsz lines
+                  ij2 = ipj2(jf) - jj   ! last ihsz lines
+                  DO ji= 1, ipi(jf)
+                     ii2 = mig(ji+iisht,ihsz)            ! warning, mig is expecting local domain indices related to nn_hls
+                     ptab(jf)%pt4d(ji,ij1,jk,jl) = ztabglo(1)%pt4d(ii2,ij2,jk,jl)
+                  END DO
+               END DO
+               DO jj = ihsz, ihsz - iF_TU
+                  ij1 = ipj( jf) - jj   ! last ihsz+1 line
+                  ij2 = ipj2(jf) - jj   ! last ihsz+1 line
+                  DO ji= 1, ipi(jf)
+                     ii2 = mig(ji+iisht,ihsz)            ! warning, mig is expecting local domain indices related to nn_hls
+                     zztmp = ztabglo(1)%pt4d(ii2,ij2,jk,jl)
+                     IF( zztmp /= zhuge )   ptab(jf)%pt4d(ji,ij1,jk,jl) = zztmp   ! apply it only if it was modified by lbc_nfd
+                  END DO
+               END DO
+            END DO   ;   END DO
+            !
+            DEALLOCATE( ztabglo(1)%pt4d )
+            !
+         END DO   ! jf
+         !
+         DEALLOCATE( znorthall )
+         !
+      ENDIF   ! ln_nnogather
+      !
+   END SUBROUTINE mpp_nfd_/**/PRECISION
+

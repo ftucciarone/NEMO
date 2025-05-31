@@ -1,0 +1,167 @@
+# ==========================================================================
+# Configuration inupt file to                                              |
+#                                                                          |
+#  1. define envelopes for generating a multi-envelope (ME) s-coordinate   |
+#     system as detailed in                                                |    
+#     Bruciaferri, D., Shapiro, G.I., Wobus, F. 2018, Ocean Dynamics,      |
+#     https://doi.org/10.1007/s10236-018-1189-x                            |
+#                                                                          |
+#  2. localise the ME s-coordinate within another model domain as detailed |
+#     in Bruciaferri et al. in preparation (optional).                     |
+#                                                                          |
+# ------------------------------------------------------------------------ |     
+#                                                                          |
+#  The ME method relies on n envelopes (i.e., arbitrarily defined depth    |
+#  surfaces) dividing the ocean model vertical domain into n subzones      |
+#  D_(i), with 1<=i<=n, each one bounded by envelope He_(i-1) at the top   |
+#  and envelope He_(i) at the bottom, with He_0 = eta (the free surface).  |
+#  Then:                                                                   | 
+#                                                                          |
+#  (a) FOR ODD i, the transormation from computational space (MEs-space)   |
+#      to physical space (depth z-space) is                                |
+#                                                                          |
+#               z = He_0 + hc*s - C(s)*(He_1 - hc - He_0)                  |
+#                                                                          |
+#      where the depth z and envelopes are downward positive defined,      |
+#      -1 <= s <= 0, with s(He_0)=0 and s(He_1)=-1 and C(s) is a           |
+#      stretching function.                                                |
+#                                                                          |
+#  (b) FOR EVEN i: the transormation from MEs-space to z-space is given by |
+#                                                                          |    
+#                             z = P3(C(s))                                 |
+#                                                                          |
+#      where P3 is a 3rd order polynomial whose coefficients are computed  |
+#      locally requiring monotonicity of the transformation and continuity | 
+#      of its Jacobian and C(s) is stretching function.                    |
+#                                                                          |
+#  Three options for stretching are given:                                 |
+#     *) nn_strt(i) = 0 : Madec et al 1996 cosh/tanh function              |
+#     *) nn_strt(i) = 1 : Song and Haidvogel 1994 sinh/tanh function       |
+#     *) nn_strt(i) = 2 : Siddorn and Furner gamma function                |
+#                                                                          |
+#---------------------------------------------------------------------------
+#                                                                          |
+#            SKETCH of the GEOMETRY OF A MEs-COORDINATE SYSTEM             |
+#                                                                          |
+#             3 envelopes are used in this example, such that              |
+#             0 < He1 < He2 < He3 :                                        |
+#                                                                          |
+#             === 1st envelope He1 (the shallowest)                        |  
+#             ¬¬¬ 2nd envelope He2                                         |
+#             ___ 3rd envelope he3 (the deepest)                           |
+#             --- W-levels                                                 |
+#                                                                          |
+#             D1: W-levels marked as D1 belong to the upper                |
+#                 sub-zone D1:                                             |
+#                 *) The number of discrete levels is controlled           |
+#                    by the nn_slev(1) namelist parameter.                 |
+#                 *) The transormation from computational space            |
+#                    to physical space is (a)                              |
+#                                                                          |
+#                 Depth first W-lev: 0 m (surface)                         |
+#                 Depth last  W-lev: depth of 1st envelope                 |        
+#                                                                          |
+#             D2: W-levels marked as D2 belong to the second               |
+#                 sub-zone D2:                                             |
+#                 *) The number of discrete levels is controlled           |
+#                    by the nn_slev(2) namelist parameter.                 |
+#                 *) The transormation from computational space            |
+#                    to physical space is (b)                              |
+#                                                                          |
+#                 Depth last  W-lev: depth of 2nd envelope                 |
+#                                                                          |
+#             D3: W-levels marked as D3 belong to the third                |
+#                 sub-zone D3:                                             |
+#                 *) The number of discrete levels is controlled           |
+#                    by the nn_slev(3) namelist parameter.                 |
+#                 *) The transormation from computational space            |
+#                    to physical space is (a)                              |
+#                                                                          |
+#                 Depth last  W-lev: depth of 3rd envelope                 |
+#                                                                          |
+#             |~~~~~~~~~~~~~~~~~~~~D1~~~~~~~~~~~~~~~~~~~ SURFACE           |           
+#             |                                                            |
+#             |--------------------D1------------------- nn_slev(1)=3      |
+#             |                                                            |  
+#             |====================D1=================== ENVELOPE 1        |
+#             |                                                            |
+#             |--------------------D2-------------------                   |
+#             |                                          nn_slev(2)=3      |
+#             |--------------------D2-------------------                   |
+#             |                                                            |
+#             |¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬D2¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬¬ ENVELOPE 2        |
+#             |                                                            |
+#             |--------------------D3------------------- nn_slev(3)=2      |
+#             |                                                            |
+#             |____________________D3___________________ ENVELOPE 3        |
+#          z \|/                                                           |
+#                                                                          | 
+# ==========================================================================
+
+# A) IINPUT FILES
+
+# Bathymetry of the domain
+bathyFile = '../local_area/bathymetry.loc_area-nord_ovf.dep2800_sig1_stn9_itr1.nc'
+
+# Horizontal grid of the domain
+hgridFile = 'coordinates_eORCA025.nc'
+
+# domain_cfg.nc or mesh_mask.nc file of the external model
+# we want to localise the new ME grid in (optional)
+zgridFile = "domain_cfg_zps.nc"
+
+# B) ENVELOPES geometrical parameters -------------------------------------
+
+# *) e_min_ofs[i] is the offset to be added to the previous envelope env[i-1]
+#    in order to calcute the minimum depth of the new envelope.
+#
+# *) To create a flat envelope env[i] with constant depth e_max_dep[i]:                                   
+#
+#    e_min_ofs[i] = "flat", e_max_dep[i] > 0                                
+#                                                                    
+# *) To create an envelope env[0] which will generate classical s-levels:             
+#
+#    e_min_ofs[i] > 0, e_max_dep[i] = "max"                                
+#
+# *) To create a totally flat envelope env[0] which will generate classical 
+#    z-levels: 
+#
+#    e_min_ofs[i] = "flat", e_max_dep[i] = "max"                               
+#
+
+e_min_ofs = [ "flat",   30.,  110., "flat"]
+e_max_dep = [  10.  ,  500., 2800.,  5800.]
+
+# C) ENVELOPES smoothing parameters ------------------------------------------
+
+# For relaxing to geopotential levels
+# near the equator (default=False)
+e_tap_equ = False
+
+# 1. LOCAL SMOOTHING 
+
+# List of lists of velocity files to be used for HPGE aware local smoothing.   
+# Use an empty list if you don't want to apply any local smoothing to a
+# particular envelope.
+e_loc_vel = [ [],
+              [],
+              ['r12_r12_maximum_hpge.nc',
+               'r12_r12-r075_maximum_hpge.nc',
+               'r12_r12-r075-r040_maximum_hpge.nc',
+               'r12_r12-r075-r040_v2_maximum_hpge.nc'],
+              [] ]
+e_loc_var = [ [], [], ['max_hpge_3','max_hpge_3','max_hpge_3','max_hpge_3'], [] ]
+# List of max spurious currents that will be used as a threshold
+e_loc_vmx = [ [0.], [0.], [0.05,0.05,0.05,0.05], [0.] ]
+
+# List of max slope parameters rx0 for local smoothing. 
+e_loc_rmx = [ [0.], [0.], [0.075,0.04,0.04,0.04], [0.] ]
+
+# List of halo for applying the local smoothing.
+e_loc_hal = [ [0], [0], [0,2,2,2], [0] ]
+ 
+# 2. GLOBAL SMOOTHING
+
+# List of Maximum slope parameter rx0 of each envelope
+e_glo_rmx = [ 0.0, 0.12, 0.12, 0.0 ]   
+

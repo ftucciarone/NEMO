@@ -1,0 +1,10 @@
+&nam_rebuild
+filebase='XIOS/eORCA1.L121-OPM003_1d_gridT'
+ndomain=4
+ l_maskout=.true.
+ deflate_level=1
+ nc4_xchunk=200
+ nc4_ychunk=200
+ nc4_zchunk=1
+ nc4_tchunk=1
+/

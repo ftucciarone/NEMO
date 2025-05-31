@@ -1,0 +1,24 @@
+# configurations, testcases & tools
+
+cfgs/work_cfgs.txt
+cfgs/*/BLD
+cfgs/*/EXP00
+cfgs/*/WORK
+cfgs/*/NEMOFILES
+cfgs/*/AGRIFLIB
+cfgs/*_ST
+
+tests/work_cfgs.txt
+tests/*/BLD
+tests/*/EXP00
+tests/*/WORK
+tests/*/NEMOFILES
+tests/*/AGRIFLIB
+tests/*_ST
+
+tools/*/BLD
+tools/*/*.exe
+tools/tools.txt
+
+# mk
+mk/full_key_list.txt

@@ -1,0 +1,33 @@
+name: pyogcm
+channels:
+  - conda-forge
+dependencies:
+  - bottleneck
+  - numba
+  - cf_xarray
+  - dask
+  - gsw
+  - netCDF4
+  - pandas
+  - pooch
+  - scipy
+  - xarray
+  - numpy
+  - matplotlib
+  - cmocean
+  - ipython
+  - cartopy
+  - curl
+  - geopy
+  - pip
+  - proj
+  - pyproj
+  - scikit-image
+  - xoak
+  - scikit-learn
+  - pys2index
+  - xgcm
+  - pip:
+    - xnemogcm
+    - git+https://github.com/willirath/xorca.git@master
+    - notebook
