@@ -1,3 +1,0 @@
-#!/bin/ksh
-BATCH_CMD="sbatch"
-ARCH="X86_ARCHER2-Cray"
