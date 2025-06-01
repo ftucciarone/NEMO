@@ -1,1 +1,0 @@
-../../../src/TOP/README.rst
