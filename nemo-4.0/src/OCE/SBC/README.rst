@@ -1,1 +1,0 @@
-../../../doc/rst/source/coupling.rst
