@@ -1,1 +1,0 @@
-../../../cfgs/AGRIF_DEMO/README.rst

@@ -1,5 +1,0 @@
-!-----------------------------------------------------------------------
-&namtrc_snk      !  Sedimentation of particles
-!-----------------------------------------------------------------------
-   nitermax      =  2   !  number of iterations for sedimentation
-/
